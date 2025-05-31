@@ -49,7 +49,7 @@ struct page {
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
-	union {
+	union { // 네가지 구조체 중 하나만 저장할 수 있음
 		struct uninit_page uninit;
 		struct anon_page anon;
 		struct file_page file;
