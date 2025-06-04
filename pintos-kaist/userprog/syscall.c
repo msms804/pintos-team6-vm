@@ -135,6 +135,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = sys_tell((int)f->R.rdi);
 			break;
 		}
+		case SYS_CLOSE:{
+			sys_close((int)f->R.rdi);
+			break;
+		}
+		default:{
+			sys_exit(-1);
+		}
 	}
 
 	// thread_exit ();
@@ -353,6 +360,7 @@ sys_close(int fd){
 	lock_acquire(&file_lock);
 	file_close(file);	
 	lock_release(&file_lock);
+	cur->file_table[fd] = NULL;
 }
 
 bool
