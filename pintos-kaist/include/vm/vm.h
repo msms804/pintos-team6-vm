@@ -47,7 +47,9 @@ struct page {
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
-	struct hash_elem *h_elem;
+	struct hash_elem h_elem;
+	bool writable;
+
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union { // 네가지 구조체 중 하나만 저장할 수 있음
