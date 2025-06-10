@@ -774,10 +774,6 @@ install_page (void *upage, void *kpage, bool writable) {
 
 static bool
 lazy_load_segment (struct page *page, void *aux) {
-	/* TODO: 파일에서 세그먼트를 로드합니다 */
-	/* TODO: 주소 VA에서 첫 번째 페이지 폴트가 발생했을 때 호출됩니다 */
-	/* TODO: 이 함수가 호출될 때 VA는 유효한 상태입니다 */
-	/*-----------[Project 3] VM -----------*/
 	struct segment_aux *seg_aux = (struct segment_aux*) aux;
 	if (file_read_at(seg_aux->file, page->frame->kva, seg_aux->page_read_bytes, seg_aux->offset) != (int)seg_aux->page_read_bytes)
 	{
@@ -785,10 +781,8 @@ lazy_load_segment (struct page *page, void *aux) {
 		return false;
 	}
 	memset(page->frame->kva + seg_aux->page_read_bytes, 0, seg_aux->page_zero_bytes);
-	free(seg_aux);
 	
 	return true;
-	/*-----------[Project 3] VM -----------*/
 }
 
 /* FILE의 OFS(offset) 위치부터 시작하여 UPAGE 주소에 세그먼트를 로드합니다.
@@ -818,19 +812,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
 		
 		/*-----------[Project 3] VM -----------*/
-		struct segment_aux *seg_aux = malloc(sizeof(struct segment_aux));
+		struct segment_aux *seg_aux = (struct segment_aux*)malloc(sizeof(struct segment_aux));
 		seg_aux->file = file;
 		seg_aux->page_read_bytes = page_read_bytes;
 		seg_aux->page_zero_bytes = page_zero_bytes;
 		seg_aux->offset = ofs;
-		aux = seg_aux;
 		/*-----------[Project 3] VM -----------*/
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+		if (!vm_alloc_page_with_initializer(VM_ANON, upage,
+											writable, lazy_load_segment, seg_aux))
 			return false;
 
 		/* Advance. */

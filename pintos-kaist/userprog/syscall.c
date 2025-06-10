@@ -69,7 +69,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
 
 	uint64_t syscall_type = f->R.rax;
-
+#ifdef VM
+	thread_current()->rsp = f->rsp;
+#endif
 	switch(syscall_type){
 		case SYS_HALT:{
 			sys_halt();
@@ -281,10 +283,16 @@ sys_read(int fd, void *buffer, size_t size){
 		return 0;
 	}
 
-	if(buffer == NULL || !is_user_vaddr(buffer) || pml4_get_page(curr->pml4, buffer)==NULL){
+	if(buffer == NULL || !is_user_vaddr(buffer)){
 		sys_exit(-1);
 	}
-
+#ifdef VM
+	struct page *page = spt_find_page(&thread_current()->spt, buffer);
+	if (page != NULL && !page->writable)
+	{
+		sys_exit(-1);
+	}
+#endif
 	if((fd<0) || (fd>=127)){
 		return -1;
 	}
@@ -318,7 +326,7 @@ sys_write(int fd, void* buf, size_t size){
 	if(buf == NULL){
 		sys_exit(-1);
 	}
-	if(!is_user_vaddr(buf) || pml4_get_page(curr->pml4, buf)==NULL){
+	if(!is_user_vaddr(buf)){
 		sys_exit(-1);
 	}
 	if((fd<=0) || (fd>=127)){
@@ -366,7 +374,7 @@ sys_close(int fd){
 bool
 sys_remove(char* filename){
 	struct thread* curr = thread_current();
-	if(!is_user_vaddr(filename) || pml4_get_page(curr->pml4, filename) == NULL){
+	if(!is_user_vaddr(filename)){
 		sys_exit(-1);
 	}
 
