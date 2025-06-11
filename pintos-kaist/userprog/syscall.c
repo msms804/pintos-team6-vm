@@ -32,9 +32,8 @@ bool sys_create(char*filename, unsigned size);
 int sys_open(char *filename);
 bool sys_remove(char *filename);
 int sys_filesize(int fd);
-
-
-
+void *sys_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+void sys_munmap(void *addr);
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -66,8 +65,6 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-
 	uint64_t syscall_type = f->R.rax;
 
 	switch(syscall_type){
@@ -138,6 +135,19 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_CLOSE:{
 			sys_close((int)f->R.rdi);
 			break;
+		}
+		case SYS_MMAP:{
+			void *addr = (void *)f->R.rdi;
+			size_t length = (size_t) f->R.rsi;
+			int writable = (int)f->R.rdx;
+			int fd = (int)f->R.r10;
+			off_t offset = (off_t)f->R.r8;
+			f->R.rax = sys_mmap(addr, length, writable, fd, offset);
+			break;
+		}
+		case SYS_MUNMAP:{
+			void *addr = (void *)f->R.rdi;
+			sys_munmap(addr);
 		}
 		default:{
 			sys_exit(-1);
@@ -281,10 +291,16 @@ sys_read(int fd, void *buffer, size_t size){
 		return 0;
 	}
 
-	if(buffer == NULL || !is_user_vaddr(buffer) || pml4_get_page(curr->pml4, buffer)==NULL){
+	if(buffer == NULL || !is_user_vaddr(buffer)){
 		sys_exit(-1);
 	}
-
+#ifdef VM
+	struct page *page = spt_find_page(&thread_current()->spt, buffer);
+	if (page != NULL && !page->writable)
+	{
+		sys_exit(-1);
+	}
+#endif
 	if((fd<0) || (fd>=127)){
 		return -1;
 	}
@@ -318,7 +334,7 @@ sys_write(int fd, void* buf, size_t size){
 	if(buf == NULL){
 		sys_exit(-1);
 	}
-	if(!is_user_vaddr(buf) || pml4_get_page(curr->pml4, buf)==NULL){
+	if(!is_user_vaddr(buf)){
 		sys_exit(-1);
 	}
 	if((fd<=0) || (fd>=127)){
@@ -366,7 +382,7 @@ sys_close(int fd){
 bool
 sys_remove(char* filename){
 	struct thread* curr = thread_current();
-	if(!is_user_vaddr(filename) || pml4_get_page(curr->pml4, filename) == NULL){
+	if(!is_user_vaddr(filename)){
 		sys_exit(-1);
 	}
 
@@ -391,4 +407,33 @@ sys_tell(int fd){
 	if (f == NULL)
 		return (unsigned)-1;
 	file_tell(f);
+}
+
+void *sys_mmap(void *addr, size_t length, int writable, int fd, off_t offset){
+	if (!is_kernel_vaddr(addr) || !is_user_vaddr(addr + length) || offset % PGSIZE != 0 || pg_round_down(addr) != addr)
+	{
+		return NULL;
+	}
+
+	if(fd < 3) {
+		return NULL;
+	}
+
+	struct file *file = thread_current()->file_table[fd];
+	if(file == NULL) {
+		return NULL;
+	}
+	
+	if (file_length(file) == 0 || (int)length <= 0)
+	{
+		return NULL;
+	}
+	return do_mmap(addr, length, writable, file, offset);
+}
+
+void sys_munmap(void *addr){
+	if(pg_round_down(addr) != addr || addr == 0){
+		return;
+	}
+	do_munmap(addr);
 }
