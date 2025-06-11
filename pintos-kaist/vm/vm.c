@@ -5,6 +5,7 @@
 #include "vm/inspect.h"
 #include "threads/mmu.h"
 #include "vm/uninit.h"
+#include "userprog/process.h"
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -173,16 +174,15 @@ vm_stack_growth (void *addr UNUSED) {
 	void *upage = pg_round_down(addr);
 	int cnt = 0;
 	while(!spt_find_page(&thread_current()->spt, upage + cnt * PGSIZE)){
-		cnt++;
-	}
-	for(int i = 0; i < cnt; i++){
-		if (!vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, upage + i * PGSIZE, true, NULL, NULL))
+		if (!vm_alloc_page(VM_ANON | VM_MARKER_0, upage + cnt * PGSIZE, true))
 		{
 			return false;
 		}
-		if(!vm_claim_page(upage + i * PGSIZE)){
+		if (!vm_claim_page(upage + cnt * PGSIZE))
+		{
 			return false;
 		}
+		cnt++;
 	}
 	return true;
 }
@@ -203,9 +203,6 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	}
 
 	void *rsp = f->rsp;
-	if(!user){	// 커널 모드에서 발생한 예외일 경우 커널 스택 포인터가 들어가 있을 수 있다.
-		rsp = thread_current()->rsp;
-	}
 	if(USER_STACK - (1 << 20) <= rsp - 8 && rsp - 8 <= addr && addr <= USER_STACK){
 		vm_stack_growth(addr);
 	}
@@ -298,7 +295,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 		void *upage = src_page->va;
 		bool writable = src_page->writable;
 
-		/* 1) type이 uninit이라면 */
 		if (type == VM_UNINIT)
 		{
 			vm_initializer *init = src_page->uninit.init;
@@ -306,8 +302,24 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 			vm_alloc_page_with_initializer(src_page->uninit.type, upage, writable, init, aux);
 			continue;
 		}
-
-		/* 2) type이 uninit이 아니면 */
+		/* type이 File이면*/
+		if(type == VM_FILE){
+			struct segment_aux *file_aux = malloc(sizeof(struct segment_aux));
+		
+			file_aux->file = src_page->file.file;
+			file_aux->offset = src_page->file.ofs;
+			file_aux->page_read_bytes = src_page->file.read_bytes;
+			file_aux->page_zero_bytes = src_page->file.zero_bytes;
+			if(!vm_alloc_page_with_initializer(type, upage, type, NULL, file_aux)){
+				return false;
+			}
+			struct page *fpage = spt_find_page(dst, upage);
+			file_backed_initializer(fpage, type, NULL);
+			fpage->frame = src_page->frame;
+			pml4_set_page(thread_current()->pml4, fpage->va, src_page->frame->kva, src_page->writable);
+			continue;
+		}
+		
 		if (!vm_alloc_page(type, upage, writable)) // uninit page 생성 & 초기화
 			return false;
 

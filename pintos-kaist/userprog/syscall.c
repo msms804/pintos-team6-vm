@@ -32,9 +32,8 @@ bool sys_create(char*filename, unsigned size);
 int sys_open(char *filename);
 bool sys_remove(char *filename);
 int sys_filesize(int fd);
-
-
-
+void *sys_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+void sys_munmap(void *addr);
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -66,12 +65,8 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-
 	uint64_t syscall_type = f->R.rax;
-#ifdef VM
-	thread_current()->rsp = f->rsp;
-#endif
+
 	switch(syscall_type){
 		case SYS_HALT:{
 			sys_halt();
@@ -140,6 +135,19 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_CLOSE:{
 			sys_close((int)f->R.rdi);
 			break;
+		}
+		case SYS_MMAP:{
+			void *addr = (void *)f->R.rdi;
+			size_t length = (size_t) f->R.rsi;
+			int writable = (int)f->R.rdx;
+			int fd = (int)f->R.r10;
+			off_t offset = (off_t)f->R.r8;
+			f->R.rax = sys_mmap(addr, length, writable, fd, offset);
+			break;
+		}
+		case SYS_MUNMAP:{
+			void *addr = (void *)f->R.rdi;
+			sys_munmap(addr);
 		}
 		default:{
 			sys_exit(-1);
@@ -399,4 +407,33 @@ sys_tell(int fd){
 	if (f == NULL)
 		return (unsigned)-1;
 	file_tell(f);
+}
+
+void *sys_mmap(void *addr, size_t length, int writable, int fd, off_t offset){
+	if (!is_kernel_vaddr(addr) || !is_user_vaddr(addr + length) || offset % PGSIZE != 0 || pg_round_down(addr) != addr)
+	{
+		return NULL;
+	}
+
+	if(fd < 3) {
+		return NULL;
+	}
+
+	struct file *file = thread_current()->file_table[fd];
+	if(file == NULL) {
+		return NULL;
+	}
+	
+	if (file_length(file) == 0 || (int)length <= 0)
+	{
+		return NULL;
+	}
+	return do_mmap(addr, length, writable, file, offset);
+}
+
+void sys_munmap(void *addr){
+	if(pg_round_down(addr) != addr || addr == 0){
+		return;
+	}
+	do_munmap(addr);
 }

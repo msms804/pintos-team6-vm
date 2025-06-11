@@ -33,13 +33,6 @@ static struct fork_aux{
 	struct intr_frame *frame;
 };
 
-static struct segment_aux{
-	struct file *file;
-	size_t page_read_bytes;
-	size_t page_zero_bytes;
-	off_t offset;
-};
-
 
 /* General process initializer for initd and other process. */
 static void
@@ -772,7 +765,7 @@ install_page (void *upage, void *kpage, bool writable) {
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
-static bool
+bool
 lazy_load_segment (struct page *page, void *aux) {
 	struct segment_aux *seg_aux = (struct segment_aux*) aux;
 	if (file_read_at(seg_aux->file, page->frame->kva, seg_aux->page_read_bytes, seg_aux->offset) != (int)seg_aux->page_read_bytes)
@@ -781,7 +774,6 @@ lazy_load_segment (struct page *page, void *aux) {
 		return false;
 	}
 	memset(page->frame->kva + seg_aux->page_read_bytes, 0, seg_aux->page_zero_bytes);
-	
 	return true;
 }
 
@@ -812,14 +804,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		
-		/*-----------[Project 3] VM -----------*/
 		struct segment_aux *seg_aux = (struct segment_aux*)malloc(sizeof(struct segment_aux));
 		seg_aux->file = file;
 		seg_aux->page_read_bytes = page_read_bytes;
 		seg_aux->page_zero_bytes = page_zero_bytes;
 		seg_aux->offset = ofs;
-		/*-----------[Project 3] VM -----------*/
 		if (!vm_alloc_page_with_initializer(VM_ANON, upage,
 											writable, lazy_load_segment, seg_aux))
 			return false;
@@ -828,9 +817,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
-		/*-----------[Project 3] VM -----------*/
 		ofs += page_read_bytes;
-		/*-----------[Project 3] VM -----------*/
 	}
 	return true;
 }
